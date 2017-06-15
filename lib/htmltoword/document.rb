@@ -72,7 +72,7 @@ module Htmltoword
 
               out.write(content_types)
             else
-              out.write(template_zip.read(entry.name))
+              out.write(template_zip.read(entry.name)) unless entry.directory?
             end
           end
           unless @image_files.empty?
