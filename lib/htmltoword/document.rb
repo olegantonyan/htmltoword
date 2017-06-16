@@ -117,10 +117,16 @@ module Htmltoword
     #for all images to be embeded in the word document
     def local_images(source)
       source.css('img').each_with_index do |image,i|
-        filename = image['data-filename'] ? image['data-filename'] : image['src'].split("/").last
+        src = image['src']
+        if image['data-src']
+          src = image['data-src']
+          src = src[1..-1] if src[0] == '/' and src[1] != '/'
+          src = Rails.root.join('public', src).to_s
+        end
+        filename = image['data-filename'] ? image['data-filename'] : src.split("/").last
         ext = File.extname(filename).delete(".").downcase
 
-        @image_files << { filename: "image#{i+1}.#{ext}", url: image['src'], ext: ext }
+        @image_files << { filename: "image#{i+1}.#{ext}", url: src, ext: ext }
       end
     end
 
