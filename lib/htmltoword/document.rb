@@ -4,20 +4,21 @@ module Htmltoword
 
     class << self
       include TemplatesHelper
-      def create(content, template_name = nil, extras = false)
+      def create(content, template_name = nil, extras = false, header_footer = {})
         template_name += extension if template_name && !template_name.end_with?(extension)
         document = new(template_file(template_name))
+        header_footer.each { |type, content| document.prepare_header_footer content, type }
         document.replace_files(content, extras)
         document.generate
       end
 
-      def create_and_save(content, file_path, template_name = nil, extras = false)
+      def create_and_save(content, file_path, template_name = nil, extras = false, header_footer = {})
         File.open(file_path, 'wb') do |out|
           out << create(content, template_name, extras)
         end
       end
 
-      def create_with_content(template, content, extras = false)
+      def create_with_content(template, content, extras = false, header_footer = {})
         template += extension unless template.end_with?(extension)
         document = new(template_file(template))
         document.replace_files(content, extras)
@@ -28,16 +29,45 @@ module Htmltoword
         '.docx'
       end
 
-      def doc_xml_file
-        'word/document.xml'
+      def doc_xml_file(type = nil)
+        case type
+          when :header
+            'word/header.xml'
+          when :footer
+            'word/footer.xml'
+          else
+            'word/document.xml'
+        end
+      end
+
+      def doc_xml_file?(name)
+        ['word/header.xml', 'word/footer.xml', 'word/document.xml'].include? name
+      end
+
+      def doc_xml_path(name)
+        case name
+          when 'word/header.xml'
+            'w:hdr'
+          when 'word/footer.xml'
+            'w:ftr'
+          else
+            '/w:document/w:body'
+        end
       end
 
       def numbering_xml_file
         'word/numbering.xml'
       end
 
-      def relations_xml_file
-        'word/_rels/document.xml.rels'
+      def relations_xml_file(type = nil)
+        case type
+          when :header
+            'word/_rels/header.xml.rels'
+          when :footer
+            'word/_rels/footer.xml.rels'
+          else
+            'word/_rels/document.xml.rels'
+        end
       end
 
       def content_types_xml_file
@@ -49,6 +79,7 @@ module Htmltoword
       @replaceable_files = {}
       @template_path = template_path
       @image_files = []
+      @header_footer = []
     end
 
     #
@@ -59,11 +90,14 @@ module Htmltoword
         buffer = Zip::OutputStream.write_buffer do |out|
           template_zip.each do |entry|
             out.put_next_entry entry.name
-            if @replaceable_files[entry.name] && entry.name == Document.doc_xml_file
+            if @replaceable_files[entry.name] && Document.doc_xml_file?(entry.name)
               source = entry.get_input_stream.read
-              # Change only the body of document. TODO: Improve this...
-              source = source.sub(/(<w:body>)((.|\n)*?)(<w:sectPr)/, "\\1#{@replaceable_files[entry.name]}\\4")
-              out.write(source)
+
+              xml = Nokogiri::XML(source.gsub(/>\s+</, '><'))
+              body = xml.xpath(Document.doc_xml_path entry.name).first
+              body.children.remove
+              body.add_child @replaceable_files[entry.name]
+              out.write xml.to_xml
             elsif @replaceable_files[entry.name]
               out.write(@replaceable_files[entry.name])
             elsif entry.name == Document.content_types_xml_file
@@ -93,29 +127,38 @@ module Htmltoword
       html = '<body></body>' if html.nil? || html.empty?
       source = Nokogiri::HTML(html.gsub(/>\s+</, '><'))
       transform_and_replace(source, xslt_path('numbering'), Document.numbering_xml_file)
-      transform_and_replace(source, xslt_path('relations'), Document.relations_xml_file)
+      transform_and_replace(source, xslt_path('relations'), Document.relations_xml_file, false, @header_footer)
       transform_doc_xml(source, extras)
       local_images(source)
     end
 
-    def transform_doc_xml(source, extras = false)
+    def transform_doc_xml(source, extras = false, type = nil)
       transformed_source = xslt(stylesheet_name: 'cleanup').transform(source)
       transformed_source = xslt(stylesheet_name: 'inline_elements').transform(transformed_source)
-      transform_and_replace(transformed_source, document_xslt(extras), Document.doc_xml_file, extras)
+      transform_and_replace(transformed_source, document_xslt(extras), Document.doc_xml_file(type), extras, type.nil?? @header_footer : ['extra-section', '1'])
+    end
+
+    def prepare_header_footer(content, type)
+      return if content.nil? || content.empty?
+      source = Nokogiri::HTML(content.gsub(/>\s+</, '><'))
+      transform_and_replace(source, xslt_path('relations'), Document.relations_xml_file(type), false, ['document-image', "'#{type.to_s}'"])
+      transform_doc_xml(source, false, type)
+      local_images(source, type.to_s)
+      @header_footer << "document-#{type.to_s}" << '1'
     end
 
     private
 
-    def transform_and_replace(source, stylesheet_path, file, remove_ns = false)
+    def transform_and_replace(source, stylesheet_path, file, remove_ns = false, stylesheet_params = [])
       stylesheet = xslt(stylesheet_path: stylesheet_path)
-      content = stylesheet.apply_to(source)
+      content = stylesheet.apply_to(source, stylesheet_params)
       content.gsub!(/\s*xmlns:(\w+)="(.*?)\s*"/, '') if remove_ns
       @replaceable_files[file] = content
     end
 
     #generates an array of hashes with filename and full url
     #for all images to be embeded in the word document
-    def local_images(source)
+    def local_images(source, file_prefix = 'image')
       source.css('img').each_with_index do |image,i|
         src = image['src']
         if image['data-src']
@@ -126,7 +169,7 @@ module Htmltoword
         filename = image['data-filename'] ? image['data-filename'] : src.split("/").last
         ext = File.extname(filename).delete(".").downcase
 
-        @image_files << { filename: "image#{i+1}.#{ext}", url: src, ext: ext }
+        @image_files << { filename: "#{file_prefix}#{i+1}.#{ext}", url: src, ext: ext }
       end
     end
 
