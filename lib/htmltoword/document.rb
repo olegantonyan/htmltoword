@@ -117,7 +117,7 @@ module Htmltoword
                 open(hash[:url], 'rb') do |f|
                   out.write(f.read)
                 end
-              rescue Errno::ENOENT
+              rescue
                 open ::Htmltoword.config.no_image_path do |f|
                   out.write(f.read)
                 end
