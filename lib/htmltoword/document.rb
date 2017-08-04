@@ -97,7 +97,7 @@ module Htmltoword
               body = xml.xpath(Document.doc_xml_path entry.name).first
               body.children.remove
               body.add_child @replaceable_files[entry.name]
-              out.write xml.to_xml
+              out.write xml.to_xml save_with: Nokogiri::XML::Node::SaveOptions::AS_XML
             elsif @replaceable_files[entry.name]
               out.write(@replaceable_files[entry.name])
             elsif entry.name == Document.content_types_xml_file
