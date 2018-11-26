@@ -1,6 +1,7 @@
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output encoding="utf-8" omit-xml-declaration="yes" indent="yes" />
 
+  <xsl:preserve-space elements="i b u s sub sup"/>
   <xsl:strip-space elements="*"/>
 
   <xsl:template match="node()|@*">

@@ -132,7 +132,7 @@ module Htmltoword
 
     def replace_files(html, extras = false)
       html = '<body></body>' if html.nil? || html.empty?
-      source = Nokogiri::HTML(html.gsub(/>\s+</, '><'))
+      source = Nokogiri::HTML(html)
       transform_and_replace(source, xslt_path('numbering'), Document.numbering_xml_file)
       transform_and_replace(source, xslt_path('relations'), Document.relations_xml_file, false, @header_footer)
       transform_doc_xml(source, extras)
