@@ -1,3 +1,5 @@
+require 'open-uri'
+
 module Htmltoword
   class Document
     include XSLTHelper
@@ -115,11 +117,11 @@ module Htmltoword
               out.put_next_entry("word/media/#{hash[:filename]}")
               begin
                 uri = hash[:url].sub %r{^file://}, ''
-                open uri, 'rb' do |f|
+                URI.open(uri, 'rb') do |f|
                   out.write(f.read)
                 end
               rescue
-                open ::Htmltoword.config.no_image_path, 'rb' do |f|
+                URI.open(::Htmltoword.config.no_image_path, 'rb') do |f|
                   out.write(f.read)
                 end
               end
